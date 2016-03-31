@@ -1,0 +1,16 @@
+{
+  "node": true,
+  "mocha": true,
+  "browser": true,
+  "esnext": true,
+  "unused": true,
+  "eqeqeq": true,
+  "nomen": true,
+  "bitwise": true,
+  "freeze": true,
+  "quotmark": "single",
+  "eqnull": true,
+  "curly": true,
+  "futurehostile": true,
+  "latedef": true
+}

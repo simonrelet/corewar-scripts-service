@@ -1,0 +1,20 @@
+{
+  "name": "corewar-scripts-service",
+  "version": "0.1.0",
+  "description": "The coreware scripts service",
+  "main": "app/index.js",
+  "scripts": {
+    "clean": "rm -fr logs",
+    "dist-clean": "npm run clean node_modules",
+    "start": "mkdir -p logs && forever start --uid scripts -p logs/ -l forever.log -a -o logs/out.log -e logs/err.log app/index.js",
+    "stop": "forever stop scripts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Simon Relet",
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "^1.14.2",
+    "express": "^4.13.3",
+    "fs-promise": "^0.5.0"
+  }
+}

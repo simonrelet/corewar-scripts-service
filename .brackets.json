@@ -1,0 +1,21 @@
+{
+  "path": {
+    "node_modules": {
+      "bb.beautify.onSave": false
+    }
+  },
+  "language": {
+    "javascript": {
+      "bb.beautify.onSave": true
+    },
+    "html": {
+      "bb.beautify.onSave": true
+    },
+    "json": {
+      "bb.beautify.onSave": true
+    },
+    "css": {
+      "bb.beautify.onSave": true
+    }
+  }
+}

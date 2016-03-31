@@ -1,0 +1,7 @@
+{
+  "js": {
+    "max_preserve_newlines": 2,
+    "wrap_line_length": 100,
+    "end_with_newline": true
+  }
+}
