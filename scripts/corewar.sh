@@ -1,15 +1,16 @@
 #! /bin/bash
 
-VERSION="0.1"
+VERSION="0.2"
 SCRIPT_NAME=`basename $0`
 
 ADDRESS="80.236.45.206"
-URL="http://$ADDRESS:4202"
+PIT_URL="http://$ADDRESS:4201"
+STADIUM_URL="http://$ADDRESS:4202"
 SCRIPTS_URL="http://$ADDRESS:4204"
 
 gen_keys_help ()
 {
-  echo "Usage: stadium gen-keys [options]"
+  echo "Usage: $SCRIPT_NAME gen-keys [options]"
   echo
   echo "Generates RSA private-public keys in PEM format."
   echo
@@ -70,10 +71,75 @@ gen_keys ()
   fi
 }
 
+leaderboard ()
+{
+  curl -s "$STADIUM_URL/leaderboard/?pretty=true"
+}
+
+pit_help ()
+{
+  echo "Usage: $SCRIPT_NAME pit [options] ship"
+  echo
+  echo "Builds a ship."
+  echo
+  echo "Options:"
+  echo "   -h, --help     Displays this help."
+  echo "   -b, --bin      Only outputs the ship if any."
+}
+
+request ()
+{
+  curl -s -X POST --data-urlencode "ship@$1" "$PIT_URL/?pretty=true"
+}
+
+request_bin ()
+{
+  request "$1"  | awk 'ORS=""; /-- Begin Bin --/ { flag=1; next } /--  End Bin  --/ { flag=0 } flag { print }'
+}
+
+is_file ()
+{
+  if [ ! -f "$1" ]; then
+    echo "$1" is not a file
+    return 1
+  fi
+  return 0
+}
+
+pit ()
+{
+  if [ "$#" -eq 0 ]; then
+    pit_help
+    return 1
+  fi
+  
+  case "$1" in
+    -b|--bin )
+      if [ "$#" -ne 2 ] || ! is_file "$2"; then
+        pit_help
+        return 1
+      fi
+      request_bin "$2"
+      ;;
+    -h|--help )
+      pit_help
+      ;;
+    * )
+      if ! is_file "$1"; then
+        pit_help
+        exit 1
+      fi
+      request "$1"
+      ;;
+  esac
+  
+  return $?
+}
+
 race_help()
 {
-  echo "Usage: stadium race [options]"
-  echo "       stadium race <captain> <private-key> <ship>"
+  echo "Usage: $SCRIPT_NAME race [options]"
+  echo "       $SCRIPT_NAME race <captain> <private-key> <ship>"
   echo
   echo "Runs the ship and publish it (if it didn't crash) for the given"
   echo "captain."
@@ -115,17 +181,16 @@ race ()
     return 1
   fi
   echo "Publishing ship..."
-  curl -X POST -d captain="$1" --data-urlencode "ship@$3" --data-urlencode signature="$signature" "$URL/race/?pretty=true"
+  curl -X POST -d captain="$1" --data-urlencode "ship@$3" --data-urlencode signature="$signature" "$STADIUM_URL/race/?pretty=true"
   return $?
 }
 
 register_help ()
 {
-  echo "Usage: stadium register [options]"
-  echo "       stadium register <captain> <public-key>"
+  echo "Usage: $SCRIPT_NAME register [options]"
+  echo "       $SCRIPT_NAME register <captain> <public-key>"
   echo
-  echo "Registers a new captain. A captain is required to be able to publish a"
-  echo "ship."
+  echo "Registers a new captain. A captain is required to be able to publish a ship."
   echo
   echo "Parameters:"
   echo "  <captain>     The name of the captain to register."
@@ -154,13 +219,81 @@ register ()
   fi
 
   echo "Registering $1..."
-  curl -X POST -d name="$1" --data-urlencode "key@$2" "$URL/captains/?pretty=true"
+  curl -X POST -d name="$1" --data-urlencode "key@$2" "$STADIUM_URL/captains/?pretty=true"
   return $?
+}
+
+update_help ()
+{
+  echo "Usage: $SCRIPT_NAME update [options]"
+  echo
+  echo "Options:"
+  echo "  -h, --help  Displays this help."
+}
+
+get_latest_version ()
+{
+  curl -s "$SCRIPTS_URL/version"
+  return $?
+}
+
+has_update ()
+{
+  remote_version=`get_latest_version`
+  if [ "$?" -ne 0 ]; then
+    return 2
+  fi
+  if [[ "$VERSION" < "$remote_version" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+update ()
+{
+  if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    update_help
+    return 0
+  fi
+
+  echo "Corewar Championship Script v$VERSION"
+  echo
+
+  has_update
+  case "$?" in
+    2 )
+      echo "Cannot access scripts service"
+      return 1
+      ;;
+    1 )
+      echo "This script is up to date!"
+      ;;
+    0 )
+      local latest=`get_latest_version`
+      echo "The version $latest is available"
+      read -p "Do you want to update? (y/n [default]) " res
+      if [[ "$res" == "y" || "$res" == "yes" ]]; then 
+        echo "Updating..."
+        
+        local new_script=`curl -s "$SCRIPTS_URL"`
+        if [[ "$new_script" == Error* ]]; then
+          echo "An error occured."
+          return 1
+        else
+          local script_file="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/$SCRIPT_NAME"
+          echo "$new_script" > $script_file
+          echo "Your ready to go!"
+        fi
+      fi
+    ;;
+  esac
+
+  return 0
 }
 
 warm_up_help ()
 {
-  echo "Usage: stadium warm-up [options] <ship>"
+  echo "Usage: $SCRIPT_NAME warm-up [options] <ship>"
   echo
   echo "Try out the ship but doesn't publish it."
   echo
@@ -238,60 +371,8 @@ warm_up ()
   fi
 
   echo "Warming up..."
-  curl -X POST --data-urlencode "ship@$ship" "$URL/warm-up/?pretty=true$params"
+  curl -X POST --data-urlencode "ship@$ship" "$STADIUM_URL/warm-up/?pretty=true$params"
   return $?
-}
-
-leaderboard ()
-{
-  curl -s "$URL/leaderboard/?pretty=true"
-}
-
-update_help ()
-{
-  echo "Usage: $SCRIPT_NAME update [options]"
-  echo
-  echo "Options:"
-  echo "  -h, --help  Displays this help."
-}
-
-update ()
-{
-  if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    update_help
-    return 0
-  fi
-  
-  echo "Corewar Championship: $SCRIPT_NAME v$VERSION"
-  echo
-  
-  local remote_version=`curl -s "$SCRIPTS_URL/stadium/version"`
-  if [ -z "$remote_version" ]; then
-    echo "Cannot access scripts service"
-    return 1
-  fi
-  
-  if [[ "$VERSION" < "$remote_version" ]]; then
-    echo "The version $remote_version is available"
-    read -p "Do you want to update? (y/n [default]) " res
-    if [[ "$res" == "y" || "$res" == "yes" ]]; then 
-      echo "Updating..."
-      
-      local new_script=`curl -s "$SCRIPTS_URL/stadium"`
-      if [[ "$new_script" == Error* ]]; then
-        echo "An error occured."
-        return 1
-      else
-        local script_file="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/$SCRIPT_NAME"
-        echo "$new_script" > $script_file
-        echo "Your ready to go!"
-      fi
-    fi
-  else
-    echo "This script is up to date!"
-  fi
-  
-  return 0
 }
 
 help ()
@@ -299,11 +380,11 @@ help ()
   echo "Usage: $SCRIPT_NAME [options]"
   echo "       $SCRIPT_NAME <command>"
   echo
-  echo "The stadium command utilities for managing captains, runing and"
+  echo "The corewar command utilities for building ships, managing captains, runing and"
   echo "publishing ships."
   echo
   echo "Commands:"
-  echo "  gen-keys, race, register, warm-up, leaderboard, update"
+  echo "  gen-keys, leaderboard, pit, race, register, update, warm-up"
   echo
   echo "Options:"
   echo "  -h, --help     Displays this help."
@@ -315,10 +396,27 @@ if [ "$#" -eq 0 ]; then
   exit 1
 fi
 
+if [ "$1" != "update" ] && has_update; then
+  echo "A new version is available. Use '$SCRIPT_NAME update'"
+fi
+
 case "$1" in
+  -v|--version )
+    echo $VERSION
+    ;;
+  -h|--help )
+    help
+    ;;
   gen-keys )
     shift
     gen_keys $@
+    ;;
+  leaderboard )
+    leaderboard
+    ;;
+  pit )
+    shift
+    pit $@
     ;;
   race )
     shift
@@ -328,22 +426,13 @@ case "$1" in
     shift
     register $@
     ;;
-  warm-up )
-    shift
-    warm_up $@
-    ;;
-  leaderboard )
-    leaderboard
-    ;;
   update )
     shift
     update $@
     ;;
-  -v|--version )
-    echo "v$VERSION"
-    ;;
-  -h|--help )
-    help
+  warm-up )
+    shift
+    warm_up $@
     ;;
   * )
     echo "Unknown command: $1"
