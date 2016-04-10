@@ -1,25 +1,34 @@
 #! /bin/bash
 
-VERSION="0.2"
-SCRIPT_NAME=`basename $0`
+set -e
+set -u
+#set -x
+
+VERSION="0.3"
+SCRIPT_NAME="$(basename "$0")"
 
 ADDRESS="80.236.45.206"
 PIT_URL="http://$ADDRESS:4201"
 STADIUM_URL="http://$ADDRESS:4202"
 SCRIPTS_URL="http://$ADDRESS:4204"
 
-gen_keys_help ()
+gen_keys_usage ()
 {
-  echo "Usage: $SCRIPT_NAME gen-keys [options]"
-  echo
-  echo "Generates RSA private-public keys in PEM format."
-  echo
-  echo "Options:"
-  echo "  -h, --help           Displays this help."
-  echo "  -k file, --key=file  Outputs the private key in file."
-  echo "                       The default file is 'rsa.pem'."
-  echo "  -p file, --pub=file  Outputs the public key in file."
-  echo "                       The default file is 'rsa.pub.pem'."
+  cat << EOF
+Usage: $SCRIPT_NAME gen-keys [options]
+
+Generates RSA private-public keys in PEM format.
+
+Options:
+  -h, --help           Displays this help.
+  -k file, --key=file  Outputs the private key in file.
+                       The default file is 'rsa.pem'.
+  -p file, --pub=file  Outputs the public key in file.
+                       The default file is 'rsa.pub.pem'.
+EOF
+
+  [ $# -eq 0 ] || exit "$1"
+  exit
 }
 
 gen_keys ()
@@ -41,34 +50,25 @@ gen_keys ()
         public_key="$1"
         ;;
       --pub=* )
-        public_key="${i#*=}"
+        public_key="${1#*=}"
         ;;
       -h|--help )
-        gen_keys_help
-        return 0
+        gen_keys_usage
         ;;
       * )
-        gen_keys_help
-        return 1
+        gen_keys_usage 1
         ;;
     esac
     shift
   done
 
-  if [[ -z "$private_key" || -z "$public_key" ]]; then
-    gen_keys_help
-    return 1
-  fi
+  [[ -z "$private_key" ]] || [[ -z "$public_key" ]] && gen_keys_usage 1
 
-  echo -e "\n  1. Generating private key in $private_key\n"
-  openssl genrsa -out "$private_key" -aes256 2048
-  if [ "$?" -eq 0 ]; then
-    echo -e "\n  2. Generating public key in $public_key\n"
-    openssl rsa -in "$private_key" -out "$public_key" -outform PEM -pubout
-    return $?
-  else
-    return 1
-  fi
+  printf "\n  1. Generating private key in %s\n\n" "$private_key"
+  openssl genrsa -out "$private_key" -aes256 2048 || return 1
+
+  printf "\n  2. Generating public key in %s\n\n" "$public_key"
+  openssl rsa -in "$private_key" -out "$public_key" -outform PEM -pubout
 }
 
 leaderboard ()
@@ -76,15 +76,20 @@ leaderboard ()
   curl -s "$STADIUM_URL/leaderboard/?pretty=true"
 }
 
-pit_help ()
+pit_usage ()
 {
-  echo "Usage: $SCRIPT_NAME pit [options] ship"
-  echo
-  echo "Builds a ship."
-  echo
-  echo "Options:"
-  echo "   -h, --help     Displays this help."
-  echo "   -b, --bin      Only outputs the ship if any."
+  cat << EOF
+Usage: $SCRIPT_NAME pit [options] ship
+
+Builds a ship.
+
+Options:
+  -h, --help           Displays this help.
+  -b file, --bin=file  Only outputs the ship if any.
+EOF
+
+  [ $# -eq 0 ] || exit "$1"
+  exit
 }
 
 request ()
@@ -99,217 +104,184 @@ request_bin ()
 
 is_file ()
 {
-  if [ ! -f "$1" ]; then
-    echo "$1" is not a file
-    return 1
-  fi
-  return 0
+  [ -f "$1" ] && return 0
+  printf "Error: '%s' is not a file\n" "$1"
+  return 1
 }
 
 pit ()
 {
-  if [ "$#" -eq 0 ]; then
-    pit_help
-    return 1
-  fi
-  
+  [ "$#" -ne 0 ] || pit_usage 1
+
   case "$1" in
-    -b|--bin )
-      if [ "$#" -ne 2 ] || ! is_file "$2"; then
-        pit_help
-        return 1
-      fi
-      request_bin "$2"
+    -b )
+      [ "$#" -eq 2 ] && is_file "$2" && request_bin "$2" && return "$?"
+      ;;
+    --bin=* )
+      is_file "${1#*=}" && request_bin "${1#*=}" && return "$?"
       ;;
     -h|--help )
-      pit_help
+      pit_usage
       ;;
     * )
-      if ! is_file "$1"; then
-        pit_help
-        exit 1
-      fi
-      request "$1"
+      is_file "$1" && request "$1" && return "$?"
       ;;
   esac
-  
-  return $?
+
+  pit_usage 1
 }
 
-race_help()
+race_usage()
 {
-  echo "Usage: $SCRIPT_NAME race [options]"
-  echo "       $SCRIPT_NAME race <captain> <private-key> <ship>"
-  echo
-  echo "Runs the ship and publish it (if it didn't crash) for the given"
-  echo "captain."
-  echo
-  echo "Parameters:"
-  echo "  <captain>      The name of the captain."
-  echo "  <private-key>  The private key to use to sign the ship."
-  echo "  <ship>         The ship to run and publish."
-  echo
-  echo "Options:"
-  echo "  -h, --help  Displays this help."
+  cat << EOF
+Usage: $SCRIPT_NAME race [options]
+       $SCRIPT_NAME race <captain> <private-key> <ship>
+
+Runs the ship and publish it (if it didn't crash) for the given
+captain.
+
+Parameters:
+  <captain>      The name of the captain.
+  <private-key>  The private key to use to sign the ship.
+  <ship>         The ship to run and publish.
+
+Options:
+  -h, --help  Displays this help.
+EOF
+
+  [ $# -eq 0 ] || exit "$1"
+  exit
 }
 
 race ()
 {
-  if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    race_help
-    return 0
-  fi
+  [ "$#" -eq 1 ] && [[ "$1" =~ ^(-h|--help)$ ]] && race_usage
+  [ "$#" -eq 3 ] || race_usage 1
+  is_file "$2" || race_usage 1
+  is_file "$3" || race_usage 1
 
-  if [ "$#" -ne 3 ]; then
-    race_help
-    return 1
-  fi
-  if [ ! -f "$2" ]; then
-    echo "The private key file doesn't exists."
-    race_help
-    return 1
-  fi
-  if [ ! -f "$3" ]; then
-    echo "The ship file doesn't exists."
-    race_help
-    return 1
-  fi
-
-  echo "Signing ship..."
-  signature=`openssl dgst -sha256 -sign $2 $3 | openssl base64`
-  if [ -z "$signature" ]; then
-    return 1
-  fi
-  echo "Publishing ship..."
-  curl -X POST -d captain="$1" --data-urlencode "ship@$3" --data-urlencode signature="$signature" "$STADIUM_URL/race/?pretty=true"
-  return $?
+  printf "Signing ship...\n"
+  signature="$(openssl dgst -sha256 -sign $2 $3 | openssl base64)"
+  [ -n "$signature" ] || return 1
+  printf "Publishing ship...\n"
+  curl  -X POST \
+        -d captain="$1" \
+        --data-urlencode "ship@$3" \
+        --data-urlencode signature="$signature" \
+        "$STADIUM_URL/race/?pretty=true"
 }
 
-register_help ()
+register_usage ()
 {
-  echo "Usage: $SCRIPT_NAME register [options]"
-  echo "       $SCRIPT_NAME register <captain> <public-key>"
-  echo
-  echo "Registers a new captain. A captain is required to be able to publish a ship."
-  echo
-  echo "Parameters:"
-  echo "  <captain>     The name of the captain to register."
-  echo "  <public-key>  The public key to use for this captain. It must be in"
-  echo "                PEM format."
-  echo
-  echo "Options:"
-  echo "  -h, --help  Displays this help."
+  cat << EOF
+Usage: $SCRIPT_NAME register [options]
+       $SCRIPT_NAME register <captain> <public-key>
+
+Registers a new captain. A captain is required to be able to publish a ship.
+
+Parameters:
+  <captain>     The name of the captain to register.
+  <public-key>  The public key to use for this captain. It must be in
+                PEM format.
+
+Options:
+  -h, --help  Displays this help.
+EOF
+
+  [ $# -eq 0 ] || exit "$1"
+  exit
 }
 
 register ()
 {
-  if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    register_help
-    return 0
-  fi
+  [ "$#" -eq 1 ] && [[ "$1" =~ ^(-h|--help)$ ]] && register_usage
+  [ "$#" -eq 2 ] || register_usage 1
+  is_file "$2" || register_usage 1
 
-  if [ "$#" -ne 2 ]; then
-    register_help
-    return 1
-  fi
-  if [ ! -f "$2" ]; then
-    echo "The public key file doesn't exists."
-    register_help
-    return 1
-  fi
-
-  echo "Registering $1..."
-  curl -X POST -d name="$1" --data-urlencode "key@$2" "$STADIUM_URL/captains/?pretty=true"
-  return $?
+  printf "Registering %s...\n" "$1"
+  curl  -X POST \
+        -d name="$1" \
+        --data-urlencode "key@$2" \
+        "$STADIUM_URL/captains/?pretty=true"
 }
 
-update_help ()
+update_usage ()
 {
-  echo "Usage: $SCRIPT_NAME update [options]"
-  echo
-  echo "Options:"
-  echo "  -h, --help  Displays this help."
+  cat << EOF
+Usage: $SCRIPT_NAME update [options]
+
+Options:
+  -h, --help  Displays this help.
+EOF
+
+  [ $# -eq 0 ] || exit "$1"
+  exit
 }
 
 get_latest_version ()
 {
   curl -s "$SCRIPTS_URL/version"
-  return $?
 }
 
 has_update ()
 {
-  remote_version=`get_latest_version`
-  if [ "$?" -ne 0 ]; then
-    return 2
-  fi
-  if [[ "$VERSION" < "$remote_version" ]]; then
-    return 0
-  fi
+  local remote_version
+  remote_version="$(get_latest_version)"
+  [ "$?" -eq 0 ] || return 2
+  [[ "$VERSION" < "$remote_version" ]] && return 0
   return 1
 }
 
 update ()
 {
-  if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-    update_help
-    return 0
+  [[ $# -eq 1 ]] && [[ "$1" =~ ^(-h|--help)$ ]] && update_usage
+
+  printf "Corewar Championship Script v%s\n\n" "$VERSION"
+
+  if has_update; then
+    local latest=`get_latest_version`
+    printf "The version %s is available" "$latest"
+    read -p "Do you want to update? (y/n [default]) " res
+    
+    [[ "$res" == "y" ]] || [[ "$res" == "yes" ]] || return 0
+    
+    printf "Updating...\n"
+    local new_script="$(curl -s "$SCRIPTS_URL")"
+    [[ "$new_script" != Error* ]] || printf "Error: An error occured.\n" && return 1
+    
+    local script_file="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/$SCRIPT_NAME"
+    printf "$new_script" > $script_file
+    printf "Your ready to go!\n"
+  else
+    [[ "$?" -eq 2 ]] && printf "Error: Cannot access scripts service\n" && return 1
+    printf "This script is up to date!\n"
   fi
-
-  echo "Corewar Championship Script v$VERSION"
-  echo
-
-  has_update
-  case "$?" in
-    2 )
-      echo "Cannot access scripts service"
-      return 1
-      ;;
-    1 )
-      echo "This script is up to date!"
-      ;;
-    0 )
-      local latest=`get_latest_version`
-      echo "The version $latest is available"
-      read -p "Do you want to update? (y/n [default]) " res
-      if [[ "$res" == "y" || "$res" == "yes" ]]; then 
-        echo "Updating..."
-        
-        local new_script=`curl -s "$SCRIPTS_URL"`
-        if [[ "$new_script" == Error* ]]; then
-          echo "An error occured."
-          return 1
-        else
-          local script_file="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/$SCRIPT_NAME"
-          echo "$new_script" > $script_file
-          echo "Your ready to go!"
-        fi
-      fi
-    ;;
-  esac
-
-  return 0
 }
 
-warm_up_help ()
+warm_up_usage ()
 {
-  echo "Usage: $SCRIPT_NAME warm-up [options] <ship>"
-  echo
-  echo "Try out the ship but doesn't publish it."
-  echo
-  echo "Parameters:"
-  echo "  <ship>  The ship file"
-  echo
-  echo "Options:"
-  echo "  -h, --help             Displays this help."
-  echo "  -v l, --verbosity=l    The verbosity level to use, must be one of:"
-  echo "                         0: No logs"
-  echo "                         1: Execution messages, decoded instructions"
-  echo "                         2: Checked zones, registers content"
-  echo "                         3: Read and write addresses, boosts"
-  echo "                         3: Read and write values"
-  echo "  -f c, --first-cycle=c  Starts the logging at cycle c."
-  echo "  -l c, --last-cycle=c   Stops the logging at cycle c."
+  cat << EOF
+Usage: $SCRIPT_NAME warm-up [options] <ship>
+
+Try out the ship but doesn't publish it.
+
+Parameters:
+  <ship>  The ship file
+
+Options:
+  -h, --help             Displays this help.
+  -v l, --verbosity=l    The verbosity level to use, must be one of:
+                         0: No logs
+                         1: Execution messages, decoded instructions
+                         2: Checked zones, registers content
+                         3: Read and write addresses, boosts
+                         3: Read and write values
+  -f c, --first-cycle=c  Starts the logging at cycle c.
+  -l c, --last-cycle=c   Stops the logging at cycle c.
+EOF
+
+  [ $# -eq 0 ] || exit "$1"
+  exit
 }
 
 warm_up ()
@@ -343,8 +315,7 @@ warm_up ()
         last_cycle="${1#*=}"
         ;;
       -h|--help )
-        warm_up_help
-        return 0
+        warm_up_usage
         ;;
       * )
         ship="$1"
@@ -353,59 +324,44 @@ warm_up ()
     shift
   done
 
-  if [ -z "$ship" ]; then
-    echo "Where's the ship dude?"
-    warm_up_help
-    return 1
-  fi
+  [ -n "$ship" ] || printf "Error: Where's the ship dude?\n" && warm_up_usage 1
 
   local params=""
-  if [ ! -z "$verbosity" ]; then
-    params+="&v=$verbosity"
-  fi
-  if [ ! -z "$first_cycle" ]; then
-    params+="&f=$first_cycle"
-  fi
-  if [ ! -z "$last_cycle" ]; then
-    params+="&l=$last_cycle"
-  fi
+  [ -z "$verbosity" ] || params+="&v=$verbosity"
+  [ -z "$first_cycle" ] || params+="&f=$first_cycle"
+  [ -z "$last_cycle" ] || params+="&l=$last_cycle"
 
-  echo "Warming up..."
+  printf "Warming up...\n"
   curl -X POST --data-urlencode "ship@$ship" "$STADIUM_URL/warm-up/?pretty=true$params"
-  return $?
 }
 
-help ()
+usage ()
 {
-  echo "Usage: $SCRIPT_NAME [options]"
-  echo "       $SCRIPT_NAME <command>"
-  echo
-  echo "The corewar command utilities for building ships, managing captains, runing and"
-  echo "publishing ships."
-  echo
-  echo "Commands:"
-  echo "  gen-keys, leaderboard, pit, race, register, update, warm-up"
-  echo
-  echo "Options:"
-  echo "  -h, --help     Displays this help."
-  echo "  -v, --version  Displays the script version."
+  cat << EOF
+Usage: $SCRIPT_NAME [options]
+       $SCRIPT_NAME {gen-keys|leaderboard|pit|race|register|update|warm-up}
+
+The corewar command utilities for building ships, managing captains, runing and
+publishing ships.
+
+Options:
+  -h, --help     Displays this help.
+  -v, --version  Displays the script version.
+EOF
+
+  [ $# -eq 0 ] || exit "$1"
+  exit
 }
 
-if [ "$#" -eq 0 ]; then
-  help
-  exit 1
-fi
-
-if [ "$1" != "update" ] && has_update; then
-  echo "A new version is available. Use '$SCRIPT_NAME update'"
-fi
+[ "$#" -ne 0 ] || usage 1
+[ "$1" != "update" ] && has_update && printf "A new version is available. Use '%s update'\n" "$SCRIPT_NAME"
 
 case "$1" in
   -v|--version )
-    echo $VERSION
+    printf "%s\n" "$VERSION"
     ;;
   -h|--help )
-    help
+    usage
     ;;
   gen-keys )
     shift
@@ -435,10 +391,7 @@ case "$1" in
     warm_up $@
     ;;
   * )
-    echo "Unknown command: $1"
-    help
-    exit 1
+    printf "Error: Unknown command '%s'\n" "$1"
+    usage 1
     ;;
 esac
-
-exit $?
