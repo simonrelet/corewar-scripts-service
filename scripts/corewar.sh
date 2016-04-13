@@ -250,10 +250,10 @@ update ()
     
     printf "Updating...\n"
     local new_script="$(curl -s "$SCRIPTS_URL")"
-    [[ "$new_script" != Error* ]] || printf "Error: An error occured.\n" && return 1
+    [[ -z "$new_script" ]] && printf "Error: An error occured.\n" && return 1
     
     local script_file="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/$SCRIPT_NAME"
-    printf "$new_script" > $script_file
+    printf "%s" "$new_script" > $script_file
     printf "Your ready to go!\n"
   else
     [[ "$?" -eq 2 ]] && printf "Error: Cannot access scripts service\n" && return 1
