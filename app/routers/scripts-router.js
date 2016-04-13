@@ -19,9 +19,21 @@ let handleError = res => {
 
 let readFileSafe = (res, path) => {
   return fsp.readFile(path, {
-      encoding: 'utf8'
-    })
-    .catch(handleError(res));
+    encoding: 'utf8'
+  });
+};
+
+let wrap = value => {
+  return `$1${value}$2`;
+};
+
+let replaceConstants = content => {
+  return Promise.resolve(content
+    .replace(constants.addressRegex, wrap(constants.config.address))
+    .replace(constants.pitPortRegex, wrap(constants.config.pitPort))
+    .replace(constants.stadiumPortRegex, wrap(constants.config.stadiumPort))
+    .replace(constants.scriptPortRegex, wrap(constants.config.port))
+  );
 };
 
 let getVersionFrom = content => {
@@ -42,13 +54,18 @@ module.exports = path => {
   });
 
   router.get('/', (req, res) => {
-    readFileSafe(res, path).then(sendResult(res));
+    readFileSafe(res, path)
+      .then(replaceConstants)
+      .then(sendResult(res))
+      .catch(handleError(res));
   });
 
   router.get('/version', (req, res) => {
-    readFileSafe(res, path).then(content => {
-      sendResult(res)(getVersionFrom(content));
-    });
+    readFileSafe(res, path)
+      .then(content => {
+        sendResult(res)(getVersionFrom(content));
+      })
+      .catch(handleError(res));
   });
   return router;
 };
