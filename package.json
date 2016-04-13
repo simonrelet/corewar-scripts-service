@@ -1,6 +1,6 @@
 {
   "name": "corewar-scripts-service",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "The coreware scripts service",
   "main": "app/index.js",
   "scripts": {
