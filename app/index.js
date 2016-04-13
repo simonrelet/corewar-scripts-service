@@ -3,8 +3,8 @@
 const app = require('express')();
 const constants = require('./constants');
 
-app.use('/', require('./routers/scripts-router.js')(constants.path));
+app.use('/', require('./routers/scripts-router.js')(constants.config.script));
 
-let server = app.listen(4204, () => {
+let server = app.listen(constants.config.port, () => {
   console.log(`Listening on port ${server.address().port}`);
 });

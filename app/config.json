@@ -1,0 +1,7 @@
+{
+  "port": 4204,
+  "script": "scripts/corewar.sh",
+  "address": "localhost",
+  "pitPort": 4201,
+  "stadiumPort": 4202
+}
